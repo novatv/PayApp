@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi panel - PayApp</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card" id="card" style="max-width:480px;display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;">
+<div class="logo" style="margin-bottom:0"><div class="mark">P</div><div class="name">PayApp</div></div>
+<a href="/" style="color:#64748b;font-size:.85rem;text-decoration:none;font-weight:600;">+ Nuevo cobro</a>
+</div>
+
+<div style="background:linear-gradient(135deg,#0EA54E,#0f766e);border-radius:16px;padding:22px;margin-top:18px;color:#fff;">
+<div style="font-size:.8rem;opacity:.85;">Saldo disponible (tu wallet)</div>
+<div style="font-size:2.4rem;font-weight:800;margin:4px 0;" id="available">--</div>
+<div style="font-size:.78rem;opacity:.85;" id="breakdown"></div>
+<button id="payoutBtn" style="width:100%;margin-top:14px;padding:12px;border:none;border-radius:10px;background:#fff;color:#0EA54E;font-weight:700;font-size:.95rem;cursor:pointer;">⚡ Retirar ahora</button>
+<p id="payoutMsg" style="font-size:.8rem;margin:10px 0 0;display:none;"></p>
+</div>
+
+<h1 style="font-size:1.15rem;margin-top:24px;">Mis cobros</h1>
+<div id="list"></div>
+</div>
+
+<script>
+const symbol = (c) => c === 'EUR' ? '€' : (c || '') + ' ';
+
+async function load() {
+const me = await fetch('/api/me').then(r => r.json());
+if (!me.user) { window.location.href = '/login'; return; }
+document.getElementById('card').style.display = 'block';
+
+const w = await fetch('/api/wallet').then(r => r.json());
+document.getElementById('available').textContent = symbol(w.currency) + w.available;
+document.getElementById('breakdown').textContent =
+'Cobrado: ' + symbol(w.currency) + w.total_collected + '  ·  Comision plataforma (' + w.fee_percent + '%): ' + symbol(w.currency) + w.platform_fee;
+
+const data = await fetch('/api/my-tikkies').then(r => r.json());
+const list = document.getElementById('list');
+if (!data.tikkies.length) {
+list.innerHTML = '<p style="color:#94a3b8;text-align:center;margin-top:16px;">Aun no has creado ningun cobro. <a href="/" style="color:#0EA54E;font-weight:600;">Crear uno</a></p>';
+return;
+}
+list.innerHTML = data.tikkies.map(t => `
+<div class="payment-row">
+<div>
+<div style="font-weight:600;">${t.description}</div>
+<div style="font-size:.75rem;color:#94a3b8;">Cobrado: ${symbol(t.currency)}${t.total_paid} de ${symbol(t.currency)}${t.amount}</div>
+</div>
+<a href="${t.pay_url}" target="_blank" style="font-size:.78rem;color:#0EA54E;font-weight:600;text-decoration:none;white-space:nowrap;">Enlace →</a>
+</div>
+`).join('');
+}
+load();
+
+document.getElementById('payoutBtn').addEventListener('click', async () => {
+const btn = document.getElementById('payoutBtn');
+const msg = document.getElementById('payoutMsg');
+btn.disabled = true; btn.textContent = 'Procesando...';
+try {
+const res = await fetch('/api/wallet/payout', { method: 'POST' });
+const data = await res.json();
+msg.style.display = 'block';
+if (data.error) { msg.style.color = '#fecaca'; msg.textContent = data.error; }
+else { msg.style.color = '#dcfce7'; msg.textContent = 'Listo: ' + data.amount + ' en camino' + (data.demo_mode ? ' (simulado)' : '') + '. ' + (data.arrival ? 'Llega en ' + data.arrival : ''); load(); }
+} catch (e) { msg.style.display = 'block'; msg.style.color = '#fecaca'; msg.textContent = 'No se pudo procesar el retiro.'; }
+btn.disabled = false; btn.textContent = '⚡ Retirar ahora';
+});
+</script>
+</body>
+</html>
