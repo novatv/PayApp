@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gracias! - PayApp</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card" style="text-align:center">
+<div style="font-size:3rem;margin-bottom:8px;">✅</div>
+<h1>Pago confirmado!</h1>
+<p class="sub" id="msg">Gracias por tu pago.</p>
+</div>
+<script>
+const params = new URLSearchParams(window.location.search);
+const paymentId = params.get('payment_id');
+if (paymentId) {
+document.getElementById('msg').textContent = 'Tu pago se ha procesado correctamente. Ya puedes cerrar esta ventana.';
+}
+</script>
+</body>
+</html>
