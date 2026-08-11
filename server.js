@@ -13,6 +13,7 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT || 10);
 const DEMO_MODE = !STRIPE_SECRET_KEY;
 
 let stripe = null;
@@ -123,6 +124,55 @@ app.get('/api/me', (req, res) => {
   res.json({ user: u ? { id: u.id, email: u.email, stripe_connected: !!u.stripe_account_id } : null });
 });
 
+// ---------- Stripe Connect (conectar cobros) ----------
+app.post('/api/connect/start', async (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  if (DEMO_MODE) {
+    db.prepare('UPDATE users SET stripe_account_id = ? WHERE id = ?').run('acct_demo_' + user.id, user.id);
+    return res.json({ url: `${BASE_URL}/connect/return?demo=1`, demo: true });
+  }
+  try {
+    let acctId = user.stripe_account_id;
+    if (!acctId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+      });
+      acctId = account.id;
+      db.prepare('UPDATE users SET stripe_account_id = ? WHERE id = ?').run(acctId, user.id);
+    }
+    const link = await stripe.accountLinks.create({
+      account: acctId,
+      refresh_url: `${BASE_URL}/connect/refresh`,
+      return_url: `${BASE_URL}/connect/return`,
+      type: 'account_onboarding',
+    });
+    res.json({ url: link.url });
+  } catch (err) {
+    console.error('Error iniciando Connect:', err);
+    res.status(500).json({ error: 'No se pudo iniciar la conexion. Revisa que Connect este habilitado en tu cuenta de Stripe.' });
+  }
+});
+
+app.get('/api/connect/status', async (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  if (!user.stripe_account_id) return res.json({ connected: false, onboarded: false });
+  if (DEMO_MODE) return res.json({ connected: true, onboarded: true, demo: true, payouts_enabled: true });
+  try {
+    const acct = await stripe.accounts.retrieve(user.stripe_account_id);
+    res.json({
+      connected: true,
+      onboarded: !!acct.details_submitted,
+      charges_enabled: !!acct.charges_enabled,
+      payouts_enabled: !!acct.payouts_enabled,
+    });
+  } catch (e) {
+    res.json({ connected: true, onboarded: false });
+  }
+});
+
 // ---------- Create a payment request (requires login) ----------
 app.post('/api/tikkies', (req, res) => {
   const user = currentUser(req);
@@ -148,7 +198,6 @@ app.get('/api/tikkies/:id', (req, res) => {
   });
 });
 
-// ---------- My links (dashboard for the logged-in user) ----------
 app.get('/api/my-tikkies', (req, res) => {
   const user = currentUser(req);
   if (!user) return res.status(401).json({ error: 'No autenticado' });
@@ -183,14 +232,22 @@ app.post('/api/tikkies/:id/pay', async (req, res) => {
     .run(paymentId, tikkie.id, tikkie.amount_cents, payer_name || null);
   if (DEMO_MODE) return res.json({ checkout_url: `${BASE_URL}/demo-checkout/${paymentId}` });
   try {
-    const session = await stripe.checkout.sessions.create({
+    // Si el dueno del enlace tiene cuenta Connect, enrutamos: 90% a su cuenta, 10% de comision a la plataforma.
+    const owner = tikkie.user_id ? db.prepare('SELECT stripe_account_id FROM users WHERE id = ?').get(tikkie.user_id) : null;
+    const ownerAcct = owner && owner.stripe_account_id && !owner.stripe_account_id.startsWith('acct_demo_') ? owner.stripe_account_id : null;
+    const sessionParams = {
       mode: 'payment',
       line_items: [{ price_data: { currency: tikkie.currency.toLowerCase(), product_data: { name: tikkie.description }, unit_amount: tikkie.amount_cents }, quantity: 1 }],
       automatic_payment_methods: { enabled: true },
       success_url: `${BASE_URL}/pay/${tikkie.id}/thanks?payment_id=${paymentId}`,
       cancel_url: `${BASE_URL}/pay/${tikkie.id}`,
       metadata: { paymentId, tikkieId: tikkie.id },
-    });
+    };
+    if (ownerAcct) {
+      const fee = Math.round(tikkie.amount_cents * (PLATFORM_FEE_PERCENT / 100));
+      sessionParams.payment_intent_data = { application_fee_amount: fee, transfer_data: { destination: ownerAcct } };
+    }
+    const session = await stripe.checkout.sessions.create(sessionParams);
     db.prepare(`UPDATE payments SET stripe_session_id = ? WHERE id = ?`).run(session.id, paymentId);
     res.json({ checkout_url: session.url });
   } catch (err) {
@@ -237,6 +294,8 @@ app.post('/demo-checkout/:paymentId/confirm', (req, res) => {
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
+app.get('/connect/return', (req, res) => res.sendFile(path.join(__dirname, 'public', 'connect-return.html')));
+app.get('/connect/refresh', (req, res) => res.redirect('/'));
 app.get('/pay/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pay.html')));
 app.get('/pay/:id/thanks', (req, res) => res.sendFile(path.join(__dirname, 'public', 'thanks.html')));
 app.get('/t/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
