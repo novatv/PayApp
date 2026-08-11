@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cobros conectados - PayApp</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card" style="text-align:center">
+<div style="font-size:3rem;margin-bottom:8px;">✅</div>
+<h1>Cobros conectados</h1>
+<p class="sub" id="msg">Tu cuenta para recibir pagos ya esta lista. Cuando alguien pague tus enlaces, el dinero ira directo a tu cuenta.</p>
+<a href="/" class="primary" style="display:block;text-decoration:none;text-align:center;line-height:1.2;">Volver a PayApp</a>
+</div>
+<script>
+const demo = new URLSearchParams(location.search).get('demo');
+if (demo) {
+document.getElementById('msg').textContent = 'Conexion simulada (modo demo). Con Stripe configurado, aqui el usuario habria conectado su banco o tarjeta de verdad.';
+}
+</script>
+</body>
+</html>
