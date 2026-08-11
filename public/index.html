@@ -15,6 +15,14 @@
 <button id="logout" style="background:none;border:none;color:#64748b;font-size:.85rem;cursor:pointer;font-weight:600;">Salir</button>
 </div>
 <p id="hello" style="font-size:.85rem;color:#0EA54E;font-weight:600;margin:14px 0 0;"></p>
+
+<div id="connectBox" style="display:none;background:#f0fdf4;border:1px solid #dcfce7;border-radius:12px;padding:16px;margin-top:16px;">
+<div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">Conecta tus cobros</div>
+<div style="font-size:.82rem;color:#475569;margin-bottom:12px;">Conecta tu banco o tarjeta para recibir el dinero de tus enlaces directo en tu cuenta.</div>
+<button id="connectBtn" class="primary" style="margin-top:0;">Conectar cobros</button>
+</div>
+<div id="connectedBadge" style="display:none;background:#dcfce7;color:#166534;border-radius:10px;padding:10px 14px;margin-top:16px;font-size:.85rem;font-weight:600;">✅ Cobros conectados — el dinero ira a tu cuenta</div>
+
 <h1>Pide dinero en segundos</h1>
 <p class="sub">Crea un enlace de pago y compartelo por WhatsApp o con codigo QR. Acepta tarjetas y bancos de cualquier pais, ademas de iDEAL, PayPal, OXXO y PIX.</p>
 
@@ -47,8 +55,23 @@ const me = await fetch('/api/me').then(r => r.json());
 if (!me.user) { window.location.href = '/login'; return; }
 document.getElementById('card').style.display = 'block';
 document.getElementById('hello').textContent = 'Conectado como ' + me.user.email;
+const st = await fetch('/api/connect/status').then(r => r.json());
+if (st.onboarded) {
+document.getElementById('connectedBadge').style.display = 'block';
+} else {
+document.getElementById('connectBox').style.display = 'block';
+}
 }
 init();
+
+document.getElementById('connectBtn').addEventListener('click', async () => {
+const btn = document.getElementById('connectBtn');
+btn.disabled = true; btn.textContent = 'Redirigiendo...';
+const res = await fetch('/api/connect/start', { method: 'POST' });
+const data = await res.json();
+if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Conectar cobros'; return; }
+window.location.href = data.url;
+});
 
 document.getElementById('logout').addEventListener('click', async () => {
 await fetch('/api/logout', { method: 'POST' });
