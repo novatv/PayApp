@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PayApp - Pide dinero facil</title>
 <link rel="stylesheet" href="/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 <div class="card">
 <div class="logo"><div class="mark">P</div><div class="name">PayApp</div></div>
 <h1>Pide dinero en segundos</h1>
-<p class="sub">Crea un enlace de pago y compartelo por WhatsApp. Acepta tarjetas y bancos de cualquier pais, ademas de iDEAL, PayPal, OXXO y PIX.</p>
+<p class="sub">Crea un enlace de pago y compartelo por WhatsApp o con codigo QR. Acepta tarjetas y bancos de cualquier pais, ademas de iDEAL, PayPal, OXXO y PIX.</p>
 
 <form id="form">
 <label for="description">Para que es?</label>
@@ -29,6 +30,8 @@
 <p><strong>Listo!</strong> Comparte este enlace:</p>
 <a id="payLink" href="#" target="_blank"></a>
 <button class="copy-btn" id="copyBtn">Copiar</button>
+<div id="qrcode" style="margin:18px auto 0;width:180px;background:#fff;padding:10px;border-radius:12px;border:1px solid #e2e8f0;display:flex;justify-content:center;"></div>
+<p style="text-align:center;font-size:.8rem;color:#64748b;margin-top:8px;">O escanea el QR para pagar</p>
 <p style="margin-top:14px;font-size:.85rem;">
 Panel de seguimiento: <a id="dashLink" href="#" target="_blank"></a>
 </p>
@@ -56,6 +59,11 @@ document.getElementById('payLink').href = data.pay_url;
 document.getElementById('payLink').textContent = data.pay_url;
 document.getElementById('dashLink').href = data.dashboard_url;
 document.getElementById('dashLink').textContent = 'Ver panel';
+
+const qrDiv = document.getElementById('qrcode');
+qrDiv.innerHTML = '';
+new QRCode(qrDiv, { text: data.pay_url, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.M });
+
 result.classList.add('show');
 });
 
