@@ -9,8 +9,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
-<div class="card">
-<div class="logo"><div class="mark">P</div><div class="name">PayApp</div></div>
+<div class="card" id="card" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;">
+<div class="logo" style="margin-bottom:0"><div class="mark">P</div><div class="name">PayApp</div></div>
+<button id="logout" style="background:none;border:none;color:#64748b;font-size:.85rem;cursor:pointer;font-weight:600;">Salir</button>
+</div>
+<p id="hello" style="font-size:.85rem;color:#0EA54E;font-weight:600;margin:14px 0 0;"></p>
 <h1>Pide dinero en segundos</h1>
 <p class="sub">Crea un enlace de pago y compartelo por WhatsApp o con codigo QR. Acepta tarjetas y bancos de cualquier pais, ademas de iDEAL, PayPal, OXXO y PIX.</p>
 
@@ -33,13 +37,24 @@
 <button class="copy-btn" id="copyBtn">Copiar</button>
 <div id="qrcode" style="margin:18px auto 0;width:180px;background:#fff;padding:10px;border-radius:12px;border:1px solid #e2e8f0;display:flex;justify-content:center;"></div>
 <p style="text-align:center;font-size:.8rem;color:#64748b;margin-top:8px;">O escanea el QR para pagar</p>
-<p style="margin-top:14px;font-size:.85rem;">
-Panel de seguimiento: <a id="dashLink" href="#" target="_blank"></a>
-</p>
+<p style="margin-top:14px;font-size:.85rem;">Panel de seguimiento: <a id="dashLink" href="#" target="_blank"></a></p>
 </div>
 </div>
 
 <script>
+async function init() {
+const me = await fetch('/api/me').then(r => r.json());
+if (!me.user) { window.location.href = '/login'; return; }
+document.getElementById('card').style.display = 'block';
+document.getElementById('hello').textContent = 'Conectado como ' + me.user.email;
+}
+init();
+
+document.getElementById('logout').addEventListener('click', async () => {
+await fetch('/api/logout', { method: 'POST' });
+window.location.href = '/login';
+});
+
 const form = document.getElementById('form');
 const result = document.getElementById('result');
 form.addEventListener('submit', async (e) => {
@@ -47,24 +62,16 @@ e.preventDefault();
 const description = document.getElementById('description').value;
 const amount = document.getElementById('amount').value;
 const creator_name = document.getElementById('creator_name').value;
-
-const res = await fetch('/api/tikkies', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ description, amount, creator_name })
-});
+const res = await fetch('/api/tikkies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description, amount, creator_name }) });
 const data = await res.json();
 if (data.error) { alert(data.error); return; }
-
 document.getElementById('payLink').href = data.pay_url;
 document.getElementById('payLink').textContent = data.pay_url;
 document.getElementById('dashLink').href = data.dashboard_url;
 document.getElementById('dashLink').textContent = 'Ver panel';
-
 const qrDiv = document.getElementById('qrcode');
 qrDiv.innerHTML = '';
 new QRCode(qrDiv, { text: data.pay_url, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.M });
-
 result.classList.add('show');
 });
 
