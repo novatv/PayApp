@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel - PayApp</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card" style="max-width:480px">
+<div class="logo"><div class="mark">P</div><div class="name">PayApp</div></div>
+<div id="loading">Cargando...</div>
+<div id="content" style="display:none">
+<h1 id="desc"></h1>
+<div class="stat">
+<div class="big" id="totalPaid"></div>
+<div class="label" id="totalGoal"></div>
+</div>
+
+<button class="primary" id="payoutBtn">Retirar ahora (pago instantaneo)</button>
+<p id="payoutMsg" style="font-size:.8rem;color:#64748b;text-align:center;margin-top:10px;display:none;"></p>
+
+<div id="payments" style="margin-top:20px;"></div>
+</div>
+</div>
+
+<script>
+const id = window.location.pathname.split('/')[2];
+let currency = 'EUR';
+
+function symbol(cur) {
+return cur === 'EUR' ? '€' : cur + ' ';
+}
+
+async function load() {
+const res = await fetch('/api/tikkies/' + id + '/status');
+if (!res.ok) {
+document.getElementById('loading').textContent = 'No encontrado.';
+return;
+}
+const data = await res.json();
+currency = data.tikkie.currency || 'EUR';
+document.getElementById('loading').style.display = 'none';
+document.getElementById('content').style.display = 'block';
+document.getElementById('desc').textContent = data.tikkie.description;
+document.getElementById('totalPaid').textContent = symbol(currency) + data.total_paid;
+document.getElementById('totalGoal').textContent = 'recibido (importe por pago: ' + symbol(currency) + data.tikkie.amount + ')';
+
+const statusLabels = {
+paid: 'Pagado', open: 'Pendiente', failed: 'Fallido',
+canceled: 'Cancelado', expired: 'Expirado'
+};
+
+const container = document.getElementById('payments');
+if (data.payments.length === 0) {
+container.innerHTML = '<p style="color:#94a3b8;text-align:center;margin-top:20px;">Nadie ha intentado pagar todavia.</p>';
+return;
+}
+container.innerHTML = data.payments.map(function(p) {
+const payoutTag = p.payout_status === 'instant_paid' ? ' - retirado' : '';
+return '<div class="payment-row"><div><div style="font-weight:600;">' + (p.payer_name || 'Anonimo') + '</div><div style="font-size:.75rem;color:#94a3b8;">' + symbol(currency) + p.amount + payoutTag + '</div></div><span class="status-pill status-' + p.status + '">' + (statusLabels[p.status] || p.status) + '</span></div>';
+}).join('');
+}
+load();
+setInterval(load, 5000);
+
+document.getElementById('payoutBtn').addEventListener('click', async () => {
+const btn = document.getElementById('payoutBtn');
+const msg = document.getElementById('payoutMsg');
+btn.disabled = true;
+btn.textContent = 'Procesando...';
+try {
+const res = await fetch('/api/tikkies/' + id + '/payout', { method: 'POST' });
+const data = await res.json();
+msg.style.display = 'block';
+if (data.error) {
+msg.textContent = 'Aviso: ' + data.error;
+} else {
+msg.textContent = 'Listo: ' + symbol(currency) + data.amount + ' en camino' + (data.demo_mode ? ' (simulado)' : '') + ' - llega en ' + (data.arrival || 'minutos') + '.';
+load();
+}
+} catch (e) {
+msg.style.display = 'block';
+msg.textContent = 'No se pudo procesar el retiro.';
+}
+btn.disabled = false;
+btn.textContent = 'Retirar ahora (pago instantaneo)';
+});
+</script>
+</body>
+</html>
