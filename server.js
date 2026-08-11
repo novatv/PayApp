@@ -210,6 +210,61 @@ app.get('/api/my-tikkies', (req, res) => {
   res.json({ email: user.email, tikkies: out });
 });
 
+// ---------- Wallet (saldo del usuario) ----------
+function walletFor(userId) {
+  const rows = db.prepare(`SELECT p.amount_cents, p.status, p.payout_status FROM payments p JOIN tikkies t ON p.tikkie_id = t.id WHERE t.user_id = ?`).all(userId);
+  const paid = rows.filter((r) => r.status === 'paid');
+  const grossCents = paid.reduce((s, r) => s + r.amount_cents, 0);
+  const feeCents = Math.round(grossCents * (PLATFORM_FEE_PERCENT / 100));
+  const netCents = grossCents - feeCents;
+  const availGross = paid.filter((r) => r.payout_status !== 'instant_paid').reduce((s, r) => s + r.amount_cents, 0);
+  const availableCents = availGross - Math.round(availGross * (PLATFORM_FEE_PERCENT / 100));
+  return { grossCents, feeCents, netCents, availableCents };
+}
+
+app.get('/api/wallet', (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  const w = walletFor(user.id);
+  res.json({
+    currency: 'EUR',
+    total_collected: fromCents(w.grossCents),
+    platform_fee: fromCents(w.feeCents),
+    your_share: fromCents(w.netCents),
+    available: fromCents(w.availableCents),
+    fee_percent: PLATFORM_FEE_PERCENT,
+    connected: !!user.stripe_account_id,
+    demo_mode: DEMO_MODE,
+  });
+});
+
+app.post('/api/wallet/payout', async (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  const rows = db.prepare(`SELECT p.id, p.amount_cents FROM payments p JOIN tikkies t ON p.tikkie_id = t.id WHERE t.user_id = ? AND p.status = 'paid' AND (p.payout_status IS NULL OR p.payout_status = 'pending')`).all(user.id);
+  if (rows.length === 0) return res.status(400).json({ error: 'No tienes saldo disponible para retirar' });
+  const gross = rows.reduce((s, r) => s + r.amount_cents, 0);
+  const net = gross - Math.round(gross * (PLATFORM_FEE_PERCENT / 100));
+  if (DEMO_MODE) {
+    rows.forEach((r) => db.prepare(`UPDATE payments SET payout_status = 'instant_paid' WHERE id = ?`).run(r.id));
+    return res.json({ demo_mode: true, amount: fromCents(net), message: 'Retiro instantaneo simulado.' });
+  }
+  if (!user.stripe_account_id || user.stripe_account_id.startsWith('acct_demo_')) {
+    return res.status(400).json({ error: 'Conecta tus cobros antes de retirar' });
+  }
+  try {
+    const payout = await stripe.payouts.create(
+      { amount: net, currency: 'eur', method: 'instant' },
+      { stripeAccount: user.stripe_account_id }
+    );
+    rows.forEach((r) => db.prepare(`UPDATE payments SET payout_status = 'instant_paid' WHERE id = ?`).run(r.id));
+    res.json({ payout_id: payout.id, amount: fromCents(net), arrival: 'minutos (instant payout)' });
+  } catch (err) {
+    console.error('Error en payout de wallet:', err);
+    res.status(500).json({ error: 'No se pudo procesar el retiro. Revisa que tu cuenta tenga una tarjeta de debito elegible para pagos instantaneos.' });
+  }
+});
+
 app.get('/api/tikkies/:id/status', (req, res) => {
   const tikkie = db.prepare(`SELECT * FROM tikkies WHERE id = ?`).get(req.params.id);
   if (!tikkie) return res.status(404).json({ error: 'No encontrado' });
@@ -294,6 +349,7 @@ app.post('/demo-checkout/:paymentId/confirm', (req, res) => {
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
+app.get('/panel', (req, res) => res.sendFile(path.join(__dirname, 'public', 'mi-panel.html')));
 app.get('/connect/return', (req, res) => res.sendFile(path.join(__dirname, 'public', 'connect-return.html')));
 app.get('/connect/refresh', (req, res) => res.redirect('/'));
 app.get('/pay/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pay.html')));
