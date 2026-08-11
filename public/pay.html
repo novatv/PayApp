@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pagar - PayApp</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card" id="card">
+<div class="logo"><div class="mark">P</div><div class="name">PayApp</div></div>
+<div id="loading">Cargando...</div>
+<div id="content" style="display:none">
+<div id="demoBadge" class="badge" style="display:none">MODO DEMO - pago simulado</div>
+<div class="desc-display" id="creatorLine"></div>
+<div class="amount-display" id="amount"></div>
+<div class="desc-display" id="description"></div>
+
+<div class="bank-grid">
+<div>Visa / Mastercard</div><div>PayPal</div><div>Apple Pay</div>
+<div>OXXO / SPEI (MX)</div><div>PIX (BR)</div><div>iDEAL (NL)</div>
+</div>
+
+<label for="payer_name">Tu nombre</label>
+<input type="text" id="payer_name" placeholder="Quien paga?">
+
+<button class="primary" id="payBtn">Elegir metodo de pago</button>
+</div>
+</div>
+
+<script>
+const id = window.location.pathname.split('/')[2];
+
+async function load() {
+const res = await fetch('/api/tikkies/' + id);
+if (!res.ok) {
+document.getElementById('loading').textContent = 'Este enlace de pago no existe.';
+return;
+}
+const t = await res.json();
+document.getElementById('loading').style.display = 'none';
+document.getElementById('content').style.display = 'block';
+const symbol = t.currency === 'EUR' ? '€' : (t.currency || '') + ' ';
+document.getElementById('amount').textContent = symbol + t.amount;
+document.getElementById('description').textContent = t.description;
+document.getElementById('creatorLine').textContent = t.creator_name
+? t.creator_name + ' te pide:'
+: 'Te piden:';
+if (t.demo_mode) document.getElementById('demoBadge').style.display = 'inline-block';
+}
+load();
+
+document.getElementById('payBtn').addEventListener('click', async () => {
+const payer_name = document.getElementById('payer_name').value;
+const btn = document.getElementById('payBtn');
+btn.disabled = true;
+btn.textContent = 'Redirigiendo...';
+const res = await fetch('/api/tikkies/' + id + '/pay', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ payer_name })
+});
+const data = await res.json();
+if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Elegir metodo de pago'; return; }
+window.location.href = data.checkout_url;
+});
+</script>
+</body>
+</html>
